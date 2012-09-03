@@ -31,31 +31,32 @@ public class XfdJenkins {
         if (urlString == null || urlString.length() == 0) {
             throw new RuntimeException("could not read property " + urlPropertyName);
         }
-        String json = readUrl(urlString);
+        String json = "";
+        try {
+            json = readUrl(urlString);
+        } catch (IOException ioe) {
+            ioe.printStackTrace();
+        }
         return parseJson(json);
     }
 
     /**
      * Return the content of the given URL as a String.
+     * @throws IOException 
      */
-    private String readUrl(String urlString) {
-        try {
-            URL u = new URL(urlString);
-            InputStream is = u.openStream();
-            InputStreamReader isr = new InputStreamReader(is);
-            BufferedReader br = new BufferedReader(isr);
-            StringBuffer content = new StringBuffer(12 * 1024);
-            String line;
-            while ((line = br.readLine()) != null) {
-                content.append(line);
-                content.append("\n");
-            }
-            br.close();
-            return content.toString();
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            return "";
+    private String readUrl(String urlString) throws IOException {
+        URL u = new URL(urlString);
+        InputStream is = u.openStream();
+        InputStreamReader isr = new InputStreamReader(is);
+        BufferedReader br = new BufferedReader(isr);
+        StringBuffer content = new StringBuffer(12 * 1024);
+        String line;
+        while ((line = br.readLine()) != null) {
+            content.append(line);
+            content.append("\n");
         }
+        br.close();
+        return content.toString();
     }
 
     /**
@@ -66,6 +67,10 @@ public class XfdJenkins {
 
         int jobsFrom = json.indexOf("jobs\":[{") + 8;
         int jobsTo = json.indexOf("}]", jobsFrom);
+        if (jobsFrom < 0 || jobsTo<= 0) {
+            // not found - return empty map
+            return colorByJobName;
+        }
         String jobsSubstring = json.substring(jobsFrom, jobsTo);
         StringTokenizer tokenizer = new StringTokenizer(jobsSubstring, "}");
         while (tokenizer.hasMoreTokens()) {
