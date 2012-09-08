@@ -1,5 +1,5 @@
-// XFD Driver 1.0
-const int XFD_SOFTWARE_VERSION = 2+4;
+// XFD Driver 1.1
+const int XFD_SOFTWARE_VERSION = 2+4+8;
 const int SHOW_VERSION_MS = 2000;
 
 // teensy pins used
@@ -7,6 +7,7 @@ const int PIN_LED = 11; // internal LED on Teensy 2.0
 const int PIN_CLK = 0; // serial clock (out)
 const int PIN_DATA = 1; // serial data (out)
 const int PIN_LATCH = 2; // latch enable (out)
+const int PIN_SWITCH = 3; // switch to ground (in)
 const int PIN_OE = 10; // output enable (out, active low)
 
 // test pattern change in ms
@@ -37,11 +38,14 @@ int inputColor = 0;
 int inputRed = 0;
 int inputYellow = 0;
 int inputGreen = 0;
+int inputExecuting = 0;
 
 // last parsed serial input values for red, yellow and green.
 int stateRed = 0;
 int stateYellow = 0;
 int stateGreen = 0;
+int stateExecuting = 0;
+int switchOn = 0;
 
 // time of next timeout
 long nextTimeout = 0;
@@ -55,6 +59,8 @@ void setup()
   pinMode(PIN_DATA, OUTPUT);
   pinMode(PIN_LATCH, OUTPUT);
   pinMode(PIN_OE, OUTPUT);
+  pinMode(PIN_SWITCH, INPUT_PULLUP);
+  // output enable constantly low
   digitalWrite(PIN_OE, LOW);
   
   // show software version
@@ -67,6 +73,8 @@ void setup()
 
 void loop()
 {
+  switchOn = digitalRead(PIN_SWITCH);
+    
   if (mode == MODE_TEST_PATTERN) {
     testPattern();
   } else if (mode == MODE_TIMEOUT) {
@@ -75,6 +83,10 @@ void loop()
     checkTimeout();
   }
   readUsbSerial();
+  if (stateExecuting != 0 && switchOn) {
+    // handle blinking
+    refreshDisplay();
+  }
 }
 
 void testPattern() {
@@ -140,6 +152,9 @@ void readUsbSerial() {
     } 
     else if (ch == 'g' || ch == 'G') {
       inputColor = 'G';
+    }
+    else if (ch == 'x' || ch == 'X') {
+      inputColor = 'X';
     } 
     else if (ch >= '0' && ch <= '9') {
       parseNumber(ch - '0');
@@ -153,47 +168,66 @@ void readUsbSerial() {
     else if (ch == 'p' || ch == 'P') {
       mode = MODE_TEST_PATTERN;
     }
+    else if (ch == '?') {
+      Serial.print("!xfd_1_1\n");
+    }
   } else {
-    delay(1);
+    delay(10);
   }
 }
 
 void parseNumber(int digit) {
   if (inputColor == 'R') {
     inputRed = 10*inputRed + digit;
-//    Serial.print("setting red to ");
-//    Serial.println(inputRed);
   } 
   else if (inputColor == 'Y') {
     inputYellow = 10*inputYellow + digit;
-//    Serial.print("setting yellow to ");
-//    Serial.println(inputYellow);
   } 
   else if (inputColor == 'G') {
     inputGreen = 10*inputGreen + digit;
-//    Serial.print("setting green to ");
-//    Serial.println(inputGreen);
+  }
+  else if (inputColor == 'X') {
+    inputExecuting = 10*inputExecuting + digit;
   }
 }
 
 void updateDisplay() {
-//  Serial.println("updateDisplay()");
 
   stateGreen = inputGreen;
   stateYellow = inputYellow;
   stateRed = inputRed;
+  stateExecuting = inputExecuting;
   
-  pushSdiData(stateGreen, stateYellow, stateRed);
-  
-  mode = MODE_USB_LISTEN;
+  refreshDisplay();
   
   inputGreen = 0;
   inputYellow = 0;
   inputRed = 0;
+  inputExecuting = 0;
   inputColor = 0;
   
+  mode = MODE_USB_LISTEN;  
   resetTimeout();
+  
+  // blink Teensy led when complete data was received
+  invertLed();
 }
+
+void refreshDisplay() {
+  // handle yellow blinking on execute
+  int currentYellow = stateYellow;
+  
+  // divide millis by 512, use last bit for blinking, for about 1 blinkcycle per second
+  int blinkOn = (millis() >> 8) & 3;
+  if (switchOn && stateExecuting != 0 && !blinkOn) {
+      currentYellow ^= stateExecuting;
+  }
+  
+  if (mode == MODE_USB_LISTEN) {
+    pushSdiData(stateGreen, currentYellow, stateRed);
+  }
+}
+
 
 void invertLed() {
   digitalWrite(PIN_LED, blinkLed);
@@ -201,15 +235,6 @@ void invertLed() {
 }
 
 void pushSdiData(int dataG, int dataY, int dataR) {
-  invertLed();
-
-  //   Serial.print(", bytes: ");
-  //   Serial.print(dataG);
-  //   Serial.print(", ");
-  //   Serial.print(dataY);
-  //   Serial.print(", ");
-  //   Serial.println(dataR);
-
 
   digitalWrite(PIN_LATCH, LOW);          //Pull latch LOW to start sending data
   shiftOut(PIN_DATA, PIN_CLK, MSBFIRST, dataR);         //Send the R data
