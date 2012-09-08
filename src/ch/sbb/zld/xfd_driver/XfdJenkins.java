@@ -25,7 +25,7 @@ public class XfdJenkins {
      * Read the URL specified in the given property. Returns a map with job name
      * as the key and an XfdColor as value.
      */
-    Map<String, XfdColor> getJobStatus(String urlPropertyName) throws IOException {
+    Map<String, XfdStatus> getJobStatus(String urlPropertyName) throws IOException {
         String urlString = properties.getProperty(urlPropertyName);
 
         if (urlString == null || urlString.length() == 0) {
@@ -62,14 +62,14 @@ public class XfdJenkins {
     /**
      * Parse the Jenkins JSON jobs and their color from the given Json String.
      */
-    private Map<String, XfdColor> parseJson(String json) {
-        Map<String, XfdColor> colorByJobName = new HashMap<String, XfdColor>(50);
+    private Map<String, XfdStatus> parseJson(String json) {
+        Map<String, XfdStatus> statusByJobName = new HashMap<String, XfdStatus>(50);
 
         int jobsFrom = json.indexOf("jobs\":[{") + 8;
         int jobsTo = json.indexOf("}]", jobsFrom);
         if (jobsFrom < 0 || jobsTo<= 0) {
             // not found - return empty map
-            return colorByJobName;
+            return statusByJobName;
         }
         String jobsSubstring = json.substring(jobsFrom, jobsTo);
         StringTokenizer tokenizer = new StringTokenizer(jobsSubstring, "}");
@@ -84,22 +84,30 @@ public class XfdJenkins {
             int colorTo = oneJob.indexOf("\"", colorFrom);
             String color = oneJob.substring(colorFrom, colorTo);
 
+            XfdStatus status = new XfdStatus();
+            
             if (color.startsWith("blue")) {
                 // blue is green
-                colorByJobName.put(name, XfdColor.GREEN);
+                status.setColor(XfdColor.GREEN);
             } else if (color.startsWith("red")) {
-                colorByJobName.put(name, XfdColor.RED);
+                status.setColor(XfdColor.RED);
             } else if (color.startsWith("yellow")) {
-                colorByJobName.put(name, XfdColor.YELLOW);
+                status.setColor(XfdColor.YELLOW);
             } else if (color.startsWith("abort")) {
                 // treat "aborted" as yellow
-                colorByJobName.put(name, XfdColor.YELLOW);
+                status.setColor(XfdColor.YELLOW);
             } else {
                 // everything else, e.g. "disabled", is blank
-                colorByJobName.put(name, XfdColor.BLANK);
+                status.setColor(XfdColor.BLANK);
             }
+            
+            if (color.contains("anim")) {
+                status.setRunning(true);
+            }
+            
+            statusByJobName.put(name, status);
         }
-        return colorByJobName;
+        return statusByJobName;
     }
 
 }

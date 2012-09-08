@@ -44,11 +44,11 @@ public final class XfdDriver {
      */
     private void loop() throws Exception {
         while (true) {
-            Map<String, XfdColor> zldJobs = jenkins.getJobStatus("urlZld");
-            Map<String, XfdColor> ciJobs = jenkins.getJobStatus("urlCi");
+            Map<String, XfdStatus> zldJobs = jenkins.getJobStatus("urlZld");
+            Map<String, XfdStatus> ciJobs = jenkins.getJobStatus("urlCi");
 
-            XfdColor[] colorByChannel = determineXfdState(zldJobs, ciJobs);
-            communicator.updateXfd(colorByChannel);
+            XfdStatus[] statusByChannel = determineXfdState(zldJobs, ciJobs);
+            communicator.updateXfd(statusByChannel);
 
             Thread.sleep(1000);
         }
@@ -57,41 +57,41 @@ public final class XfdDriver {
     /**
      * Determine the colors for each of the 8 channels (array index 0-7).
      */
-    private XfdColor[] determineXfdState(Map<String, XfdColor> zldJobs, Map<String, XfdColor> ciJobs) {
-        XfdColor[] colorByChannel = new XfdColor[8];
+    private XfdStatus[] determineXfdState(Map<String, XfdStatus> zldJobs, Map<String, XfdStatus> ciJobs) {
+        XfdStatus[] statusByChannel = new XfdStatus[8];
         int maxAggregationChannel = communicator.propertyToInt("aggregateTo", 8);
-        List<XfdColor> colorToAggregate = new ArrayList<XfdColor>(8);
+        List<XfdStatus> statusToAggregate = new ArrayList<XfdStatus>(8);
         for (int channel = 1; channel < 8; channel++) {
-            colorByChannel[channel] = determineXfdState(channel, zldJobs, ciJobs);
+            statusByChannel[channel] = determineXfdState(channel, zldJobs, ciJobs);
             if (channel <= maxAggregationChannel) {
-                colorToAggregate.add(colorByChannel[channel]);
+                statusToAggregate.add(statusByChannel[channel]);
             }
         }
-        colorByChannel[0] = aggregate(colorToAggregate);
-        return colorByChannel;
+        statusByChannel[0] = aggregate(statusToAggregate);
+        return statusByChannel;
     }
 
     /**
-     * Determine the given channel number's color from the map of jobs and their
+     * Determine the given channel number's status from the map of jobs and their
      * respective colors. Matches jobs agains the regex from properties for the
      * channel. Example: - jenkins.channel.1=zld -
      * regex.channel.1=ZLD-Compile.*|ZLD-Check.*
      */
-    private XfdColor determineXfdState(int channel, Map<String, XfdColor> zldJobs, Map<String, XfdColor> ciJobs) {
+    private XfdStatus determineXfdState(int channel, Map<String, XfdStatus> zldJobs, Map<String, XfdStatus> ciJobs) {
         String channelKey = "channel." + channel;
         String ci = properties.getProperty("jenkins." + channelKey);
         String regex = properties.getProperty("regex." + channelKey);
 
-        List<XfdColor> matchingColors = new ArrayList<XfdColor>(50);
+        List<XfdStatus> matchingStatus = new ArrayList<XfdStatus>(50);
         if (ci.startsWith("ci")) {
-            addMatching(regex, ciJobs, matchingColors);
+            addMatching(regex, ciJobs, matchingStatus);
         } else {
-            addMatching(regex, zldJobs, matchingColors);
+            addMatching(regex, zldJobs, matchingStatus);
         }
-        return aggregate(matchingColors);
+        return aggregate(matchingStatus);
     }
 
-    private void addMatching(String regex, Map<String, XfdColor> jobs, List<XfdColor> matchingColors) {
+    private void addMatching(String regex, Map<String, XfdStatus> jobs, List<XfdStatus> matchingColors) {
         for (String job : jobs.keySet()) {
             if (job.matches(regex)) {
                 matchingColors.add(jobs.get(job));
@@ -100,35 +100,51 @@ public final class XfdDriver {
     }
 
     /**
-     * Determine the aggregate color for the List of XfdColors.
+     * Determine the aggregate XfdStatus for the List of XfdStatus.
+     * Colors:
+     * all blank -> blank
+     * any red -> red
+     * all green -> green
+     * otherwise -> yellow
+     * Running:
+     * any running -> isRunning
      */
-    private XfdColor aggregate(List<XfdColor> colors) {
+    private XfdStatus aggregate(List<XfdStatus> statusses) {
         boolean allGreen = true;
         boolean anyRed = false;
         boolean allBlank = true;
-        for (XfdColor color : colors) {
-            if (XfdColor.BLANK == color) {
+        boolean anyRunning = false;
+        for (XfdStatus status : statusses) {
+            
+            if (status.isColor(XfdColor.BLANK)) {
                 // no influence
             } else {
                 allBlank = false;
-                if (XfdColor.GREEN != color) {
+                if (!status.isColor(XfdColor.GREEN)) {
                     allGreen = false;
                 }
-                if (XfdColor.RED == color) {
+                if (status.isColor(XfdColor.RED)) {
                     anyRed = true;
                 }
             }
-
+            
+            if (status.isRunning()) {
+                anyRunning = true;
+            }
         }
+        
+        XfdStatus status = new XfdStatus();
         if (allBlank) {
-            return XfdColor.BLANK;
+            status.setColor(XfdColor.BLANK);
         } else if (anyRed) {
-            return XfdColor.RED;
+            status.setColor(XfdColor.RED);
         } else if (allGreen) {
-            return XfdColor.GREEN;
+            status.setColor(XfdColor.GREEN);
         } else {
-            return XfdColor.YELLOW;
+            status.setColor(XfdColor.YELLOW);
         }
+        status.setRunning(anyRunning);
+        return status;
     }
 
 }

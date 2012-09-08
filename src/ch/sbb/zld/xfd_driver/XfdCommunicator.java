@@ -47,32 +47,38 @@ public class XfdCommunicator {
     }
 
     /**
-     * Update the Xfd Display with the given colors per channel. Works by
+     * Update the Xfd Display with the given status per channel. Works by
      * left-shifting a 1 bit into the channels place for each of the red,
      * yellow, or green bytes.
      */
-    void updateXfd(XfdColor[] colorByChannel) throws PortInUseException, UnsupportedCommOperationException, IOException {
+    void updateXfd(XfdStatus[] statusByChannel) throws PortInUseException, UnsupportedCommOperationException, IOException {
         int r = 0;
         int y = 0;
         int g = 0;
+        int x = 0;
         for (int ch = 0; ch < 8; ch++) {
-            XfdColor color = colorByChannel[ch];
-            if (XfdColor.RED == color) {
+            XfdStatus status = statusByChannel[ch];
+            
+            if (status.isColor(XfdColor.RED)) {
                 r += (1 << ch);
-            } else if (XfdColor.GREEN == color) {
+            } else if (status.isColor(XfdColor.GREEN)) {
                 g += (1 << ch);
-            } else if (XfdColor.YELLOW == color) {
+            } else if (status.isColor(XfdColor.YELLOW)) {
                 y += (1 << ch);
+            }
+            
+            if (status.isRunning()) {
+                x += (1 << ch);
             }
         }
         if (portIdentifier == null) {
             portIdentifier = guessPort();
         }
-        updateXfd(portIdentifier, r, y, g);
+        updateXfd(portIdentifier, r, y, g, x);
     }
 
     /**
-     * Guess a port.
+     * Guess a port. Finds first serial usb port starting from portMin.
      */
     private CommPortIdentifier guessPort() {
         int portMin = propertyToInt("portMin", 8);
@@ -117,9 +123,9 @@ public class XfdCommunicator {
     }
 
     /**
-     * Update the XFD with given byte values for red, yellow and green.
+     * Update the XFD with given byte values for red, yellow, green and executing.
      */
-    private void updateXfd(CommPortIdentifier port, int r, int y, int g) throws PortInUseException, UnsupportedCommOperationException,
+    private void updateXfd(CommPortIdentifier port, int r, int y, int g, int x) throws PortInUseException, UnsupportedCommOperationException,
             IOException {
         if (portIdentifier.isCurrentlyOwned()) {
             System.out.println("Error: Port is currently in use");
@@ -132,7 +138,7 @@ public class XfdCommunicator {
 
                 OutputStream out = serialPort.getOutputStream();
 
-                xfdDisplay(out, r, y, g);
+                xfdDisplay(out, r, y, g, x);
 
                 serialPort.close();
             } else {
@@ -142,10 +148,10 @@ public class XfdCommunicator {
     }
 
     /**
-     * Write the output bytes for r,y,g to the given output stream.
+     * Write the output bytes for r,y,g,x to the given output stream.
      */
-    private void xfdDisplay(OutputStream out, int r, int y, int g) throws IOException {
-        String msg = "r" + r + "y" + y + "g" + g + ";";
+    private void xfdDisplay(OutputStream out, int r, int y, int g, int x) throws IOException {
+        String msg = "r" + r + "y" + y + "g" + g + "x" + x + ";";
         out.write(msg.getBytes());
     }
 }
