@@ -68,6 +68,10 @@ public final class XfdDriver {
             }
         }
         statusByChannel[0] = aggregate(statusToAggregate);
+        
+        // the channel 0 should not blink
+        statusByChannel[0].setRunning(false);
+        
         return statusByChannel;
     }
 
